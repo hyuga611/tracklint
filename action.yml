@@ -1,0 +1,22 @@
+name: 'tracklint'
+description: "Fail CI when a form or CTA isn't wired for conversion tracking (submit button, dataLayer.push, noindex thank-you page)."
+author: 'tracklint'
+branding:
+  icon: 'check-circle'
+  color: 'green'
+inputs:
+  files:
+    description: 'Space-separated files or directories to check. Default: auto-detect files containing <form> in the repo.'
+    required: false
+    default: ''
+runs:
+  using: 'composite'
+  steps:
+    - name: Run tracklint
+      shell: bash
+      # Pass the caller input via env (NOT ${{ }} expanded into the script) to avoid
+      # GitHub Actions template/shell injection. $FILES is intentionally unquoted so
+      # multiple space-separated paths split into separate argv.
+      env:
+        FILES: ${{ inputs.files }}
+      run: node "$GITHUB_ACTION_PATH/src/check.mjs" $FILES

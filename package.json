@@ -1,0 +1,37 @@
+{
+  "name": "tracklint",
+  "version": "0.0.0",
+  "description": "Conversion-tracking integrity linter — fail CI when a form or CTA isn't wired for tracking (submit button, dataLayer.push, noindex thank-you page). Zero-dependency, language-agnostic, runs in CI.",
+  "type": "module",
+  "bin": {
+    "tracklint": "src/check.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "src",
+    "action.yml"
+  ],
+  "scripts": {
+    "poc": "node src/check.mjs examples/bad",
+    "selfcheck": "node src/check.mjs examples/good",
+    "test": "node --test"
+  },
+  "keywords": [
+    "conversion-tracking",
+    "analytics",
+    "gtm",
+    "google-tag-manager",
+    "ga4",
+    "datalayer",
+    "linter",
+    "ci",
+    "github-action",
+    "html",
+    "jsx",
+    "noindex",
+    "martech"
+  ],
+  "license": "MIT"
+}
