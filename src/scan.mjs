@@ -25,8 +25,17 @@ export const DEFAULT_CONFIG = {
 
 // ---- tokenizer（ゼロ依存・行番号付き。JSX の {expr} 属性値も許容） ----
 
-const TAG = /<(\/?)([a-zA-Z][\w:-]*)((?:"[^"]*"|'[^']*'|[^"'>])*)>/g;
-const ATTR = /([\w:@.-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\{[^}]*\})|([^\s"'=<>`]+)))?/g;
+// タグ属性部は「クオート文字列」「{JSX式}（1段ネストまで）」「その他非区切り文字」を許容する。
+// これにより onClick={() => f()} の中の '>' や data-x={a > b} でタグが途中終了しない。
+const BRACE = String.raw`\{(?:[^{}]|\{[^{}]*\})*\}`;
+const TAG = new RegExp(String.raw`<(\/?)([a-zA-Z][\w:-]*)((?:"[^"]*"|'[^']*'|${BRACE}|[^"'>])*)>`, 'g');
+const ATTR = new RegExp(String.raw`([\w:@.-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(${BRACE})|([^\s"'=<>\`]+)))?`, 'g');
+
+// HTML コメントと <script>/<style> 本文を「長さ・改行を保ったまま」空白化する。
+// これで行番号やオフセットを狂わせずに、コメント/スクリプト内のタグ的テキストを走査対象から外せる。
+const COMMENT = /<!--[\s\S]*?-->/g;
+const RAWTEXT = /<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi;
+const blank = (m) => m.replace(/[^\n]/g, ' ');
 
 function parseAttrs(str) {
   const attrs = new Map();
@@ -41,16 +50,24 @@ function parseAttrs(str) {
   return attrs;
 }
 
-/** HTML/JSX をタグ列に分解する（コメント・doctype は自動的に無視される）。 */
+/** HTML/JSX をタグ列に分解する（コメント・<script>/<style> 本文・doctype は無視される）。 */
 export function tokenize(html) {
+  const clean = html.replace(COMMENT, blank).replace(RAWTEXT, blank);
   const tokens = [];
   let m;
+  let pos = 0;
+  let line = 1;
   TAG.lastIndex = 0;
-  while ((m = TAG.exec(html)) !== null) {
+  while ((m = TAG.exec(clean)) !== null) {
+    while (pos < m.index) {
+      if (clean.charCodeAt(pos) === 10) line++;
+      pos++;
+    }
     let attrStr = m[3];
-    const selfClose = /\/\s*$/.test(attrStr);
+    // 自己終了 '/' の誤検出を避ける: 直前が空白/クオート、または属性部先頭のときだけ自己終了とみなす
+    // （action=/thanks/ のような未クオート値の末尾スラッシュを自己終了と誤認しない）。
+    const selfClose = /(?:^|[\s"'`])\/\s*$/.test(attrStr);
     if (selfClose) attrStr = attrStr.replace(/\/\s*$/, '');
-    const line = (html.slice(0, m.index).match(/\n/g) || []).length + 1;
     tokens.push({
       name: m[2].toLowerCase(),
       isClose: m[1] === '/',
@@ -106,8 +123,9 @@ export function resolveDest(fromFile, dest) {
     else parts.push(seg);
   }
   let out = parts.join('/');
-  if (endsSlash || !/\.[a-z0-9]+$/i.test(out.split('/').pop() || '')) {
-    out += `${out.endsWith('/') ? '' : '/'}index.html`;
+  const base = out.split('/').pop() || '';
+  if (endsSlash || !/\.[a-z0-9]+$/i.test(base)) {
+    out = out ? `${out}/index.html` : 'index.html';
   }
   return out;
 }
@@ -115,20 +133,28 @@ export function resolveDest(fromFile, dest) {
 // ---- rules ----
 
 function submitControl(form) {
-  // 優先: 正しい <button type=submit> → だめな送信要素（input submit/image, submit()するdiv等）
+  // 優先: 正しい <button type=submit> → だめな送信要素（input submit/image, JSで submit するボタン/div 等）
   let proper = null;
   let improper = null;
   for (const c of form.controls) {
+    const onclick = c.attrs.get('onclick') || '';
+    const jsSubmits = /\.(?:request)?submit\s*\(/i.test(onclick);
     if (c.name === 'button') {
       const type = (c.attrs.get('type') || 'submit').toLowerCase();
-      if (type === 'submit' && !proper) proper = c;
+      if (type === 'submit') {
+        if (!proper) proper = c;
+      } else if (jsSubmits && !improper) {
+        improper = c; // type=button/reset なのに JS でフォームを submit している
+      }
     } else if (c.name === 'input') {
       const type = (c.attrs.get('type') || '').toLowerCase();
-      if ((type === 'submit' || type === 'image') && !improper) improper = c;
-    } else {
-      // div/span/a が onclick で form を submit している
-      const onclick = c.attrs.get('onclick') || '';
-      if (/\.(?:request)?submit\s*\(/i.test(onclick) && !improper) improper = c;
+      if (type === 'submit' || type === 'image') {
+        if (!improper) improper = c;
+      } else if (jsSubmits && !improper) {
+        improper = c;
+      }
+    } else if (jsSubmits && !improper) {
+      improper = c; // div/span/a が onclick で form を submit している
     }
   }
   return { proper, improper };
@@ -177,12 +203,13 @@ export function scan(html, opts = {}) {
     }
   }
 
-  // ファイル単位の signal（R3 用）。HTML コメントは走査対象外にする
-  // （計測呼び出しを"説明"しているコメントを実装と誤認しないため）。
-  const code = html.replace(/<!--[\s\S]*?-->/g, ' ');
+  // ファイル単位の signal（R3 用）。コメントは除外し、AJAX の判定は
+  // 「実際の submit ハンドラの証拠」に限定する（type="submit" 属性の "submit" に反応しない）。
+  const code = html.replace(COMMENT, ' ');
+  const hasSubmitHandler = /addEventListener\s*\(\s*['"]submit['"]|onsubmit\s*=|\.(?:request)?submit\s*\(/i.test(code);
   const hasAjax =
     /\bfetch\s*\(|XMLHttpRequest|\baxios\b|\$\.ajax|\.ajax\s*\(/.test(code) ||
-    (/preventDefault\s*\(/.test(code) && /\bsubmit\b/i.test(code));
+    (/preventDefault\s*\(/.test(code) && hasSubmitHandler);
   const hasConversion = conversionCalls.some((c) => code.includes(c));
 
   for (const form of forms) {

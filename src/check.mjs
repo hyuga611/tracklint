@@ -78,6 +78,16 @@ export function main(argv) {
   const args = argv.filter((a) => a !== '--' && !a.startsWith('-'));
   const config = loadConfig(root);
 
+  // 明示指定されたパスが存在しない場合は「素通りで exit 0」にせず error にする
+  // （files: のタイプミスやリネームで CI が黙って緑になる＝偽の安心を防ぐ）。
+  if (args.length) {
+    const missing = args.filter((a) => !existsSync(resolve(root, a)));
+    if (missing.length) {
+      console.error(`tracklint: 指定されたパスが見つかりません: ${missing.join(', ')}`);
+      return 2;
+    }
+  }
+
   const targets = collectTargets(root, args);
   if (targets.length === 0) {
     console.log('tracklint: <form> を含む対象ファイルがありません。スキップ。');

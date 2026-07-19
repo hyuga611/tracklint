@@ -110,3 +110,75 @@ test('resolveDest: 相対・ルート絶対・ディレクトリ・外部URL', (
 test('collectIds: 動的 id は集計から除外', () => {
   assert.deepEqual(collectIds('<button id="a"></button><button id="b-{{n}}"></button>'), ['a']);
 });
+
+// --- 公開前レビューで見つかった不具合の回帰テスト ---
+
+test('JSX: onClick={() => gtag(...)} の > でタグが壊れず、インライン計測を認識', () => {
+  const f = scan('<form data-thankyou="t.html"><button onClick={() => gtag("event","cv")}>送信</button></form>', ok);
+  assert.equal(rules(f).includes('submit-missing-tracking'), false);
+});
+
+test('JSX: data-gtm-event が矢印関数の後ろにあっても脱落しない', () => {
+  const t = tokenize('<button onClick={() => track()} data-gtm-event="cta">x</button>');
+  assert.equal(t[0].attrs.get('data-gtm-event'), 'cta');
+});
+
+test('コメントアウトされた壊れフォームは検出しない（false-positive回避）', () => {
+  const html =
+    '<form data-thankyou="t.html"><button type="submit" id="ok" data-gtm-event="x">送信</button></form>' +
+    '<!-- 旧: <form action="old.php"><input type="submit"></form> -->';
+  assert.deepEqual(rules(scan(html, ok)), []);
+});
+
+test('hasNoindex: コメントアウトされた noindex は無効', () => {
+  assert.equal(hasNoindex('<head><!-- <meta name="robots" content="noindex"> --><title>x</title></head>'), false);
+});
+
+test('thankyou-indexable: noindexがコメントアウトされていれば検出（false-negative回避）', () => {
+  const f = scan('<form action="thanks.html"><button type="submit" id="s1">送信</button></form>', {
+    filename: 'contact.html',
+    exists: () => true,
+    readText: () => '<head><!-- <meta name="robots" content="noindex"> --><title>x</title></head>',
+  });
+  assert.ok(rules(f).includes('thankyou-indexable'));
+});
+
+test('<script>/文字列リテラル内の <form> は実マークアップ扱いしない', () => {
+  const f = scan('<script>const t = "<form action=\\"/thanks.html\\"><input type=\\"submit\\"></form>";</script>', {
+    exists: () => false,
+    readText: () => null,
+  });
+  assert.deepEqual(rules(f), []);
+});
+
+test('collectIds: コメント内の id は集計しない', () => {
+  assert.deepEqual(collectIds('<button id="s"></button><!-- <button id="s"></button> -->'), ['s']);
+});
+
+test('自己終了誤検出: 未クオート action=/thanks/ でフォームがスキップされない', () => {
+  const t = tokenize('<form action=/thanks/>');
+  assert.equal(t[0].selfClose, false);
+  assert.equal(t[0].attrs.get('action'), '/thanks/');
+});
+
+test('resolveDest: ルート "/" は index.html（先頭スラッシュを付けない）', () => {
+  assert.equal(resolveDest('pages/contact.html', '/'), 'index.html');
+});
+
+test('AJAX判定: type="submit" の submit だけでは発火しない（誤warn回避）', () => {
+  const html =
+    '<form action="/contact"><button type="submit" id="b" data-gtm-event="x">送信</button></form>' +
+    '<script>menu.addEventListener("click", (e) => { e.preventDefault(); });</script>';
+  assert.equal(rules(scan(html, ok)).includes('ajax-no-conversion'), false);
+});
+
+test('button type=button が JS で submit していれば submit-not-button', () => {
+  const f = scan('<form data-thankyou="t.html"><button type="button" onclick="this.form.submit()">送信</button></form>', ok);
+  assert.ok(rules(f).includes('submit-not-button'));
+});
+
+test('行番号: 前段のタグ数に関わらず正しい行を指す', () => {
+  const html = '<div>\n<div>\n<form data-thankyou="t.html"><button type="submit">x</button></form>';
+  const f = scan(html, ok);
+  assert.ok(f.some((x) => x.rule === 'submit-missing-tracking' && x.ln === 3));
+});
