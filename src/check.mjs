@@ -15,17 +15,29 @@ import { scan, collectIds, DEFAULT_CONFIG } from './scan.mjs';
 const EXT = /\.(html?|php|jsx|tsx|vue|svelte)$/i;
 const IGNORE_DIRS = new Set(['node_modules', 'dist', 'build', 'vendor', '.git', '.svn', 'coverage']);
 
-function loadConfig(root) {
-  try {
-    const cfg = JSON.parse(readFileSync(join(root, 'tracklint.config.json'), 'utf8'));
-    return {
-      ...DEFAULT_CONFIG,
-      ...cfg,
-      rules: { ...DEFAULT_CONFIG.rules, ...(cfg.rules || {}) },
-    };
-  } catch {
-    return DEFAULT_CONFIG;
+// --preset=wordpress,meta を解釈（= 区切り必須。値が位置引数と衝突しないため空白形式は不可）
+function parsePresets(argv) {
+  const out = [];
+  for (const a of argv) {
+    if (a.startsWith('--preset=')) out.push(...a.slice('--preset='.length).split(','));
   }
+  return out.map((s) => s.trim()).filter(Boolean);
+}
+
+function loadConfig(root, cliPresets = []) {
+  let cfg = {};
+  try {
+    cfg = JSON.parse(readFileSync(join(root, 'tracklint.config.json'), 'utf8'));
+  } catch {
+    cfg = {};
+  }
+  const presets = [...new Set([...(cfg.presets || []), ...cliPresets])];
+  return {
+    ...DEFAULT_CONFIG,
+    ...cfg,
+    presets,
+    rules: { ...DEFAULT_CONFIG.rules, ...(cfg.rules || {}) },
+  };
 }
 
 function walk(root, dir, out) {
@@ -76,7 +88,7 @@ export function main(argv) {
   const inActions = process.env.GITHUB_ACTIONS === 'true';
   const root = process.cwd();
   const args = argv.filter((a) => a !== '--' && !a.startsWith('-'));
-  const config = loadConfig(root);
+  const config = loadConfig(root, parsePresets(argv));
 
   // 明示指定されたパスが存在しない場合は「素通りで exit 0」にせず error にする
   // （files: のタイプミスやリネームで CI が黙って緑になる＝偽の安心を防ぐ）。

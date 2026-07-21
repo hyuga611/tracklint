@@ -182,3 +182,102 @@ test('行番号: 前段のタグ数に関わらず正しい行を指す', () => 
   const f = scan(html, ok);
   assert.ok(f.some((x) => x.rule === 'submit-missing-tracking' && x.ln === 3));
 });
+
+// --- preset: wordpress ---
+
+const wp = { ...ok, config: { presets: ['wordpress'] } };
+
+test('preset off: CF7 の <input type=submit> は通常どおり submit-not-button', () => {
+  const f = scan('<form class="wpcf7-form"><input type="submit"></form>', ok);
+  assert.ok(rules(f).includes('submit-not-button'));
+  assert.equal(rules(f).includes('wp-form-no-success-tracking'), false);
+});
+
+test('CF7: 完了イベント配線が無いと wp-form-no-success-tracking（クリック配線ルールは抑制）', () => {
+  const f = scan('<form class="wpcf7-form"><input type="hidden" name="_wpcf7" value="1"><input type="submit"></form>', wp);
+  assert.ok(rules(f).includes('wp-form-no-success-tracking'));
+  assert.equal(rules(f).includes('submit-not-button'), false);
+});
+
+test('CF7: wpcf7mailsent + gtag なら指摘なし', () => {
+  const html =
+    '<form class="wpcf7-form"><input type="submit"></form>' +
+    '<script>document.addEventListener("wpcf7mailsent",function(e){gtag("event","lead")})</script>';
+  assert.deepEqual(rules(scan(html, wp)), []);
+});
+
+test('CF7: CV が wpcf7submit に紐付いていれば wp-form-tracking-on-wrong-event', () => {
+  const html =
+    '<form class="wpcf7-form"><input type="submit"></form>' +
+    '<script>document.addEventListener("wpcf7submit",function(){gtag("event","lead")})</script>';
+  const f = scan(html, wp);
+  assert.ok(rules(f).includes('wp-form-tracking-on-wrong-event'));
+  assert.equal(f.find((x) => x.rule === 'wp-form-tracking-on-wrong-event').severity, 'warn');
+});
+
+test('Snow Monkey: smf.complete が無ければ wp-form-no-success-tracking', () => {
+  const f = scan('<form class="snow-monkey-form"><button type="submit">送信</button></form>', wp);
+  assert.ok(rules(f).includes('wp-form-no-success-tracking'));
+});
+
+test('Snow Monkey: smf.complete + dataLayer.push なら指摘なし', () => {
+  const html =
+    '<form class="snow-monkey-form"><button type="submit">送信</button></form>' +
+    '<script>document.addEventListener("smf.complete",function(e){if(e.detail.status==="complete")dataLayer.push({event:"cv"})})</script>';
+  assert.deepEqual(rules(scan(html, wp)), []);
+});
+
+test('WP フォームは action 由来の thankyou を誤爆させない', () => {
+  const html =
+    '<form class="wpcf7-form" action="thanks.html"><input type="submit"></form>' +
+    '<script>document.addEventListener("wpcf7mailsent",()=>dataLayer.push({event:"x"}))</script>';
+  const f = scan(html, { filename: 'contact.html', exists: () => false, readText: () => null, config: { presets: ['wordpress'] } });
+  assert.equal(rules(f).includes('thankyou-unresolved'), false);
+});
+
+test('WPForms / MW WP Form は検出のみ（success-tracking は課さない=誤検知回避）', () => {
+  const wpf = scan('<form class="wpforms-form"><button type="submit" class="wpforms-submit">送信</button></form>', wp);
+  assert.equal(rules(wpf).includes('wp-form-no-success-tracking'), false);
+  const mw = scan('<form class="mw_wp_form"><input type="submit" name="submitSend" value="送信"></form>', wp);
+  assert.equal(rules(mw).includes('submit-not-button'), false); // 検出→クリック配線ルール抑制
+  assert.equal(rules(mw).includes('wp-form-no-success-tracking'), false);
+});
+
+// --- preset: meta ---
+
+const meta = { ...ok, config: { presets: ['meta'] } };
+
+test('Meta: fbq(track) があるのに base code が無いと meta-pixel-track-without-base (error)', () => {
+  const html =
+    '<form action="/s.php"><button type="submit" id="b" data-gtm-event="x">送信</button></form>' +
+    '<script>fbq("track","Lead")</script>';
+  const f = scan(html, meta);
+  const hit = f.find((x) => x.rule === 'meta-pixel-track-without-base');
+  assert.ok(hit);
+  assert.equal(hit.severity, 'error');
+});
+
+test('Meta: 異なる PIXEL_ID で init が複数なら meta-pixel-duplicate-init (warn)', () => {
+  const html =
+    '<form action="/s.php"><button type="submit" id="b" data-gtm-event="x">送信</button></form>' +
+    '<script>fbq("init","111111111111111");fbq("init","222222222222222");fbq("track","PageView")</script>';
+  const f = scan(html, meta);
+  const hit = f.find((x) => x.rule === 'meta-pixel-duplicate-init');
+  assert.ok(hit);
+  assert.equal(hit.severity, 'warn');
+});
+
+test('Meta: init + track が揃っていれば meta 指摘なし', () => {
+  const html =
+    '<form action="/s.php"><button type="submit" id="b" data-gtm-event="x">送信</button></form>' +
+    '<script>fbq("init","111111111111111");fbq("track","Lead")</script>';
+  assert.equal(rules(scan(html, meta)).some((r) => r.startsWith('meta-')), false);
+});
+
+test('preset 未指定なら fbq/CF7 マークアップがあっても新ルールは沈黙（後方互換）', () => {
+  const html =
+    '<form class="wpcf7-form" data-thankyou="t.html"><button type="submit" id="s" data-gtm-event="x">送信</button></form>' +
+    '<script>fbq("track","Lead")</script>';
+  const f = scan(html, ok);
+  assert.equal(rules(f).some((r) => r.startsWith('wp-form-') || r.startsWith('meta-')), false);
+});

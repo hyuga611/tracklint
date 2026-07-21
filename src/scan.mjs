@@ -10,6 +10,8 @@ export const DEFAULT_CONFIG = {
   trackingAttributes: ['data-gtm-event', 'data-ga4-event', 'data-track'],
   // 「コンバージョンが飛んだ」とみなす JS 呼び出し
   conversionCalls: ['dataLayer.push', 'gtag', 'analytics.track'],
+  // 有効化するプリセット（フォームフレームワーク/計測基盤ごとの知識）: 'wordpress' | 'meta'
+  presets: [],
   // ルールごとの severity: 'error' | 'warn' | 'off'
   rules: {
     'submit-not-button': 'error',
@@ -20,6 +22,12 @@ export const DEFAULT_CONFIG = {
     'ajax-no-conversion': 'warn', // 誤検知が出やすいので既定 warn
     'thankyou-unresolved': 'error',
     'thankyou-indexable': 'error',
+    // preset:wordpress（該当フォーム検出時のみ発火）
+    'wp-form-no-success-tracking': 'warn',
+    'wp-form-tracking-on-wrong-event': 'warn',
+    // preset:meta（fbq 検出時のみ発火）
+    'meta-pixel-track-without-base': 'error',
+    'meta-pixel-duplicate-init': 'warn',
   },
 };
 
@@ -160,6 +168,56 @@ function submitControl(form) {
   return { proper, improper };
 }
 
+// ---- WordPress フォームプリセット（公式ドキュメントで裏取りした完了シグナル） ----
+//
+// 各フォームプラグインの「送信完了」挙動は異なり、既定では別URLのサンクスへ遷移しない。
+// そのため generic な thankyou 判定が誤爆する（＝presetが要る核心理由）。ここでは
+//  - CF7 / Snow Monkey: 完了 DOM イベントに計測が配線されているかを静的に検証する
+//  - WPForms / MW WP Form: 完了がサーバ再描画/設定依存で静的検証できない → 検出（＝誤爆抑制）のみ
+const cls = (t) => t.attrs.get('class') || '';
+const hasControlName = (form, name) =>
+  form.controls.some((c) => c.name === 'input' && (c.attrs.get('name') || '') === name);
+
+const WP_FORM_TYPES = [
+  {
+    key: 'cf7',
+    name: 'Contact Form 7',
+    model: 'event', // 既定AJAX・同一URL・完了はDOMイベント（公式: 別サンクス遷移は不要）
+    match: (f) => /\bwpcf7-form\b/.test(cls(f)) || hasControlName(f, '_wpcf7'),
+    signals: ['wpcf7mailsent'], // メール送信成功時のみ発火＝CVに使う正しいイベント
+    wrong: ['wpcf7submit'], // 「他の事象に関わらず毎回発火」＝invalid/spam/failedでもCV水増し
+  },
+  {
+    key: 'smf',
+    name: 'Snow Monkey Forms',
+    model: 'event',
+    match: (f) => /\bsnow-monkey-form\b/.test(cls(f)),
+    signals: ['smf.complete'], // detail.status==='complete' で判定するのが正（smf.submit は全応答で発火）
+    wrong: [],
+  },
+  {
+    key: 'wpforms',
+    name: 'WPForms',
+    model: 'detect', // 確認タイプ3種・完了はDOM置換/設定依存で静的検証不能 → 検出のみ
+    match: (f) => /\bwpforms-form\b/.test(cls(f)),
+    signals: [],
+    wrong: [],
+  },
+  {
+    key: 'mwwp',
+    name: 'MW WP Form',
+    model: 'detect', // JSイベント無し・完了は同一URL再描画/別URL設定依存 → 検出のみ
+    match: (f) => hasControlName(f, 'submitSend') || hasControlName(f, 'submitConfirm'),
+    signals: [],
+    wrong: [],
+  },
+];
+
+function detectWpForm(form) {
+  for (const t of WP_FORM_TYPES) if (t.match(form)) return t;
+  return null;
+}
+
 /**
  * 1ファイル分の HTML/JSX を走査して findings を返す（純粋・テスト可能）。
  * @param opts.filename    リポジトリ相対のファイル名（パス解決に使う）
@@ -178,7 +236,12 @@ export function scan(html, opts = {}) {
   } = opts;
   const rules = { ...DEFAULT_CONFIG.rules, ...(config.rules || {}) };
   const trackingAttributes = config.trackingAttributes || DEFAULT_CONFIG.trackingAttributes;
-  const conversionCalls = config.conversionCalls || DEFAULT_CONFIG.conversionCalls;
+  const presets = new Set(config.presets || []);
+  const wordpressActive = presets.has('wordpress') || presets.has('wp');
+  const metaActive = presets.has('meta');
+  let conversionCalls = config.conversionCalls || DEFAULT_CONFIG.conversionCalls;
+  // Meta / WordPress を有効化したら fbq を「コンバージョン呼び出し」として認識する
+  if (metaActive || wordpressActive) conversionCalls = [...conversionCalls, 'fbq'];
 
   const findings = [];
   const push = (rule, ln, msg) => {
@@ -212,16 +275,20 @@ export function scan(html, opts = {}) {
     (/preventDefault\s*\(/.test(code) && hasSubmitHandler);
   const hasConversion = conversionCalls.some((c) => code.includes(c));
 
+  let sawWpForm = false;
   for (const form of forms) {
-    // R1 / R2: 送信コントロール
+    const wp = wordpressActive ? detectWpForm(form) : null;
+    if (wp) sawWpForm = true;
+
+    // R1 / R2: 送信コントロール（WP フォームは完了イベントで計測するため、クリック配線ルールは適用しない）
     const { proper, improper } = submitControl(form);
-    if (improper && !proper) {
+    if (!wp && improper && !proper) {
       const what =
         improper.name === 'input'
           ? `<input type="${(improper.attrs.get('type') || '').toLowerCase()}">`
           : `<${improper.name}>`;
       push('submit-not-button', improper.line, `送信コントロールが ${what} です。<button type="submit"> にしてください（GTM/GA4 のクリック計測が要素を特定できません）`);
-    } else if (proper) {
+    } else if (!wp && proper) {
       const id = proper.attrs.get('id');
       const hasId = id != null && id !== '';
       const hasTrackAttr = trackingAttributes.some((a) => proper.attrs.has(a) && proper.attrs.get(a) !== '');
@@ -239,9 +306,9 @@ export function scan(html, opts = {}) {
       }
     }
 
-    // R4: サンクスページ
+    // R4: サンクスページ（WP フォームの action は admin-ajax 等で静的サンクスではない → action 由来では推定しない）
     let dest = form.attrs.get('data-thankyou') || form.attrs.get('data-success-url');
-    if (!dest) {
+    if (!dest && !wp) {
       const action = (form.attrs.get('action') || '').split(/[?#]/)[0];
       if (action && !/^(?:[a-z][\w+.-]*:)?\/\//i.test(action)) {
         const base = (action.replace(/\/$/, '').split('/').pop()) || '';
@@ -262,11 +329,47 @@ export function scan(html, opts = {}) {
         }
       }
     }
+
+    // preset:wordpress — CF7 / Snow Monkey は「完了イベントに計測が配線されているか」を検証する
+    if (wp && wp.model === 'event') {
+      const hasSignal = wp.signals.some((s) => code.includes(s));
+      if (!hasSignal || !hasConversion) {
+        const why = !hasSignal
+          ? `'${wp.signals[0]}' のリスナが見当たりません`
+          : '成功時の計測呼び出し(gtag / dataLayer.push / fbq)が見当たりません';
+        push('wp-form-no-success-tracking', form.line, `${wp.name} は送信完了でページ遷移しません。'${wp.signals[0]}' のリスナ内で計測を発火してください（${why}）`);
+      }
+      if (wp.wrong.length && hasConversion) {
+        const hasWrong = wp.wrong.some((w) => code.includes(w));
+        const hasRight = wp.signals.some((s) => code.includes(s));
+        if (hasWrong && !hasRight) {
+          push('wp-form-tracking-on-wrong-event', form.line, `計測が '${wp.wrong[0]}' に紐付いています（無効送信・スパム時も発火し CV を水増しします）。成功時のみ発火する '${wp.signals[0]}' を使ってください`);
+        }
+      }
+    }
+    // wp.model === 'detect'（WPForms / MW WP Form）は完了がサーバ再描画/設定依存で静的検証不能。
+    // 検出＝thankyou 誤爆の抑制のみ行い、success-tracking は課さない（誤検知回避）。
   }
 
   // R3: AJAX 送信なのに成功時の計測イベントが無い（ファイル単位・1回だけ）
-  if (forms.length && hasAjax && !hasConversion) {
+  //   WP フォーム検出時は、より具体的な wp-form-* ルールに委ねて二重警告を避ける
+  if (forms.length && hasAjax && !hasConversion && !(wordpressActive && sawWpForm)) {
     push('ajax-no-conversion', forms[0].line, `AJAX 送信のようですが、成功時の計測呼び出し(${conversionCalls.join(' / ')})がファイル内に見当たりません（ページ遷移しないため計測が飛びません）`);
+  }
+
+  // preset:meta — Meta Pixel(fbq) の静的配線チェック（fbq が無ければ何も出さない）
+  if (metaActive) {
+    const initIds = [...code.matchAll(/fbq\s*\(\s*['"]init['"]\s*,\s*['"](\d{6,20})['"]/g)].map((m) => m[1]);
+    const distinctIds = [...new Set(initIds)];
+    const hasTrack = /fbq\s*\(\s*['"]track(?:Custom)?['"]/.test(code);
+    const hasBase = /fbevents\.js/.test(code) || /fbq\s*\(\s*['"]init['"]/.test(code);
+    const anchor = forms[0] ? forms[0].line : 1;
+    if (hasTrack && !hasBase) {
+      push('meta-pixel-track-without-base', anchor, `fbq('track', …) がありますが Meta Pixel の base code（fbq('init', …) / fbevents.js ローダー）が見当たりません（track がキューに積まれるだけで送信されません）`);
+    }
+    if (distinctIds.length > 1) {
+      push('meta-pixel-duplicate-init', anchor, `異なる Meta Pixel ID で fbq('init') が複数あります(${distinctIds.join(', ')})。PageView/CV が二重計上されます`);
+    }
   }
 
   return findings.sort((a, b) => a.ln - b.ln);

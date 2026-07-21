@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<!-- Contact Form 7 — GOOD: 送信成功時のみ発火する wpcf7mailsent で計測する（公式推奨の配線）。
+     $ npx tracklint --preset=wordpress,meta examples/wordpress/cf7-good.html  → 指摘ゼロ -->
+<html lang="ja">
+  <head><meta charset="utf-8"><title>お問い合わせ</title></head>
+  <body>
+    <div class="wpcf7" id="wpcf7-f123-p45-o1">
+      <form class="wpcf7-form init" action="/contact/#wpcf7-f123-p45-o1" method="post">
+        <input type="hidden" name="_wpcf7" value="123">
+        <p><label>お名前 <input type="text" name="your-name"></label></p>
+        <p><input type="submit" value="送信する" class="wpcf7-form-control wpcf7-submit"></p>
+      </form>
+    </div>
+
+    <script>
+      // ✓ 成功時だけの wpcf7mailsent で計測（document 付与：全 wpcf7* イベントは document までバブルする）
+      document.addEventListener('wpcf7mailsent', function (e) {
+        gtag('event', 'generate_lead', { form_id: e.detail.contactFormId, unit: e.detail.unitTag });
+      });
+    </script>
+  </body>
+</html>

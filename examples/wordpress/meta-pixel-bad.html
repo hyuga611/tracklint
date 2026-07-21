@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<!-- Meta Pixel — BAD: fbq('track') はあるが base code（fbevents.js / fbq('init')）が無い＝送信されない。
+     $ npx tracklint --preset=meta examples/wordpress/meta-pixel-bad.html -->
+<html lang="ja">
+  <head><meta charset="utf-8"><title>資料請求</title></head>
+  <body>
+    <form action="/submit.php" method="post">
+      <input type="text" name="name">
+      <button type="submit" id="lead-submit" data-gtm-event="lead">資料を請求する</button>
+    </form>
+
+    <script>
+      // ✗ Meta Pixel のベースコード（ローダーと初期化）が未挿入のまま送信だけ呼んでいる。
+      //    track は queue に積まれるだけでネットワークに送信されない。
+      fbq('track', 'Lead');
+    </script>
+  </body>
+</html>

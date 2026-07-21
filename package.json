@@ -1,6 +1,6 @@
 {
   "name": "tracklint",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Conversion-tracking integrity linter — fail CI when a form or CTA isn't wired for tracking (submit button, dataLayer.push, noindex thank-you page). Zero-dependency, language-agnostic, runs in CI.",
   "type": "module",
   "bin": {

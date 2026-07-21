@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<!-- Contact Form 7 — BAD: 完了イベントに計測が無く、CV を wpcf7submit（無効送信でも発火）に紐付けている。
+     $ npx tracklint --preset=wordpress,meta examples/wordpress/cf7-bad.html -->
+<html lang="ja">
+  <head><meta charset="utf-8"><title>お問い合わせ</title></head>
+  <body>
+    <div class="wpcf7" id="wpcf7-f123-p45-o1">
+      <form class="wpcf7-form init" action="/contact/#wpcf7-f123-p45-o1" method="post">
+        <input type="hidden" name="_wpcf7" value="123">
+        <p><label>お名前 <input type="text" name="your-name"></label></p>
+        <p><input type="submit" value="送信する" class="wpcf7-form-control wpcf7-submit"></p>
+      </form>
+    </div>
+
+    <script>
+      // ✗ wpcf7submit は invalid / spam / mailfailed でも発火する → CV が水増しされる
+      document.addEventListener('wpcf7submit', function () {
+        gtag('event', 'generate_lead');
+      });
+    </script>
+  </body>
+</html>
