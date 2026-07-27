@@ -95,14 +95,14 @@ export function main(argv) {
   if (args.length) {
     const missing = args.filter((a) => !existsSync(resolve(root, a)));
     if (missing.length) {
-      console.error(`tracklint: 指定されたパスが見つかりません: ${missing.join(', ')}`);
+      console.error(`tracklint: path not found: ${missing.join(', ')}`);
       return 2;
     }
   }
 
   const targets = collectTargets(root, args);
   if (targets.length === 0) {
-    console.log('tracklint: <form> を含む対象ファイルがありません。スキップ。');
+    console.log('tracklint: no file containing a <form> was found — skipping.');
     return 0;
   }
 
@@ -112,7 +112,7 @@ export function main(argv) {
     try {
       texts.set(f, readFileSync(resolve(root, f), 'utf8'));
     } catch {
-      console.error(`tracklint: ${f} を読めません`);
+      console.error(`tracklint: cannot read ${f}`);
       return 2;
     }
   }
@@ -134,14 +134,14 @@ export function main(argv) {
   for (const f of targets) {
     const findings = scan(texts.get(f), { filename: f, exists, readText, isDupId, config });
     if (findings.length === 0) {
-      console.log(`✓ ${f} — 計測OK`);
+      console.log(`✓ ${f} — tracking wired`);
       continue;
     }
     const e = findings.filter((x) => x.severity === 'error').length;
     const w = findings.length - e;
     errors += e;
     warns += w;
-    console.error(`✗ ${f} — ${findings.length} 件 (error:${e} warn:${w})`);
+    console.error(`✗ ${f} — ${findings.length} finding${findings.length === 1 ? '' : 's'} (${e} error / ${w} warning)`);
     for (const x of findings) {
       console.error(`  ${f}:${x.ln}\t[${x.rule}] ${x.msg}`);
       if (inActions) {
@@ -152,10 +152,10 @@ export function main(argv) {
   }
 
   if (errors > 0) {
-    console.error(`\ntracklint: ${errors} 件の error${warns ? ` / ${warns} 件の warn` : ''}`);
+    console.error(`\ntracklint: ${errors} error${errors === 1 ? '' : 's'}${warns ? ` / ${warns} warning${warns === 1 ? '' : 's'}` : ''}`);
     return 1;
   }
-  console.log(`\ntracklint: error 0 件${warns ? `（warn ${warns} 件）` : ''} — OK`);
+  console.log(`\ntracklint: 0 errors${warns ? ` / ${warns} warning${warns === 1 ? '' : 's'}` : ''} — tracking wired`);
   return 0;
 }
 

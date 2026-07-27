@@ -287,7 +287,7 @@ export function scan(html, opts = {}) {
         improper.name === 'input'
           ? `<input type="${(improper.attrs.get('type') || '').toLowerCase()}">`
           : `<${improper.name}>`;
-      push('submit-not-button', improper.line, `送信コントロールが ${what} です。<button type="submit"> にしてください（GTM/GA4 のクリック計測が要素を特定できません）`);
+      push('submit-not-button', improper.line, `submit control is ${what} — use <button type="submit"> so GTM/GA4 click tracking can identify the element`);
     } else if (!wp && proper) {
       const id = proper.attrs.get('id');
       const hasId = id != null && id !== '';
@@ -295,14 +295,14 @@ export function scan(html, opts = {}) {
       const onclick = proper.attrs.get('onclick') || '';
       const inlineConv = conversionCalls.some((c) => onclick.includes(c));
       if (!hasId && !hasTrackAttr && !inlineConv) {
-        push('submit-missing-tracking', proper.line, '送信ボタンに一意の id・計測属性(data-gtm-event 等)・インライン計測呼び出しがありません（クリックが計測不能）');
+        push('submit-missing-tracking', proper.line, 'submit button has no unique id, no tracking attribute (data-gtm-event etc.), and no inline tracking call — the click cannot be measured');
       } else if (hasId && isDynamic(id)) {
-        push('submit-dynamic-id', proper.line, `送信ボタンの id がテンプレート展開されています("${id}")。実行時の値・一意性を静的に検証できません`);
+        push('submit-dynamic-id', proper.line, `submit button id is template-expanded ("${id}") — its runtime value and uniqueness cannot be verified statically`);
       } else if (hasId && isDupId(id)) {
-        push('submit-duplicate-id', proper.line, `送信ボタンの id "${id}" が複数箇所で使われています。クリックが二重計上/取り違えられます`);
+        push('submit-duplicate-id', proper.line, `submit button id "${id}" is used more than once — clicks will be double-counted or attributed to the wrong form`);
       }
       if (hasId && !hasTrackAttr) {
-        push('submit-missing-gtm-event-attr', proper.line, 'id はありますが data-gtm-event が無く、コンバージョン名が GTM コンテナ側にしか存在しません');
+        push('submit-missing-gtm-event-attr', proper.line, 'has an id but no data-gtm-event — the conversion name lives only inside the GTM container');
       }
     }
 
@@ -320,11 +320,11 @@ export function scan(html, opts = {}) {
       const resolved = resolveDest(filename, dest);
       if (resolved) {
         if (!exists(resolved)) {
-          push('thankyou-unresolved', form.line, `サンクスページ "${dest}" (${resolved}) がリポジトリに存在しません`);
+          push('thankyou-unresolved', form.line, `thank-you page "${dest}" (${resolved}) does not exist in the repo`);
         } else {
           const body = readText(resolved);
           if (body != null && !hasNoindex(body)) {
-            push('thankyou-indexable', form.line, `サンクスページ "${dest}" に <meta name="robots" content="noindex"> がありません（インデックス漏れ・CV 二重計上のリスク）`);
+            push('thankyou-indexable', form.line, `thank-you page "${dest}" has no <meta name="robots" content="noindex"> — it can be indexed and inflate conversions`);
           }
         }
       }
@@ -335,15 +335,15 @@ export function scan(html, opts = {}) {
       const hasSignal = wp.signals.some((s) => code.includes(s));
       if (!hasSignal || !hasConversion) {
         const why = !hasSignal
-          ? `'${wp.signals[0]}' のリスナが見当たりません`
-          : '成功時の計測呼び出し(gtag / dataLayer.push / fbq)が見当たりません';
-        push('wp-form-no-success-tracking', form.line, `${wp.name} は送信完了でページ遷移しません。'${wp.signals[0]}' のリスナ内で計測を発火してください（${why}）`);
+          ? `no listener for '${wp.signals[0]}'`
+          : 'no success-time tracking call (gtag / dataLayer.push / fbq)';
+        push('wp-form-no-success-tracking', form.line, `${wp.name} does not navigate on submit — fire tracking inside the '${wp.signals[0]}' listener (${why})`);
       }
       if (wp.wrong.length && hasConversion) {
         const hasWrong = wp.wrong.some((w) => code.includes(w));
         const hasRight = wp.signals.some((s) => code.includes(s));
         if (hasWrong && !hasRight) {
-          push('wp-form-tracking-on-wrong-event', form.line, `計測が '${wp.wrong[0]}' に紐付いています（無効送信・スパム時も発火し CV を水増しします）。成功時のみ発火する '${wp.signals[0]}' を使ってください`);
+          push('wp-form-tracking-on-wrong-event', form.line, `tracking is bound to '${wp.wrong[0]}', which also fires on invalid and spam submissions and inflates conversions — use '${wp.signals[0]}', which fires only on success`);
         }
       }
     }
@@ -354,7 +354,7 @@ export function scan(html, opts = {}) {
   // R3: AJAX 送信なのに成功時の計測イベントが無い（ファイル単位・1回だけ）
   //   WP フォーム検出時は、より具体的な wp-form-* ルールに委ねて二重警告を避ける
   if (forms.length && hasAjax && !hasConversion && !(wordpressActive && sawWpForm)) {
-    push('ajax-no-conversion', forms[0].line, `AJAX 送信のようですが、成功時の計測呼び出し(${conversionCalls.join(' / ')})がファイル内に見当たりません（ページ遷移しないため計測が飛びません）`);
+    push('ajax-no-conversion', forms[0].line, `looks like an AJAX submit, but no success-time tracking call (${conversionCalls.join(' / ')}) appears in this file — nothing fires because the page never navigates`);
   }
 
   // preset:meta — Meta Pixel(fbq) の静的配線チェック（fbq が無ければ何も出さない）
@@ -365,10 +365,10 @@ export function scan(html, opts = {}) {
     const hasBase = /fbevents\.js/.test(code) || /fbq\s*\(\s*['"]init['"]/.test(code);
     const anchor = forms[0] ? forms[0].line : 1;
     if (hasTrack && !hasBase) {
-      push('meta-pixel-track-without-base', anchor, `fbq('track', …) がありますが Meta Pixel の base code（fbq('init', …) / fbevents.js ローダー）が見当たりません（track がキューに積まれるだけで送信されません）`);
+      push('meta-pixel-track-without-base', anchor, `fbq('track', …) is present but the Meta Pixel base code (fbq('init', …) / the fbevents.js loader) is missing — track calls queue up and are never sent`);
     }
     if (distinctIds.length > 1) {
-      push('meta-pixel-duplicate-init', anchor, `異なる Meta Pixel ID で fbq('init') が複数あります(${distinctIds.join(', ')})。PageView/CV が二重計上されます`);
+      push('meta-pixel-duplicate-init', anchor, `fbq('init') is called with more than one Pixel ID (${distinctIds.join(', ')}) — PageView and conversions will be double-counted`);
     }
   }
 
