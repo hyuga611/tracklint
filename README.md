@@ -1,5 +1,7 @@
 # tracklint
 
+![tracklint fails CI on a non-button submit control and an indexable thank-you page](docs/hero.svg)
+
 > Part of a set of zero-dependency CI tools for AI-agent repos — start with **[reflint](https://github.com/hyuga611/reflint)**.
 
 **Did a redesign quietly stop your form from tracking conversions?**

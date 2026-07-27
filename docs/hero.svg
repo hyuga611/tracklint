@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="304" viewBox="0 0 720 304" role="img" aria-label="Terminal: tracklint reports an indexable thank-you page, a missing AJAX conversion call, and a submit control that is not a button">
+  <title>Terminal: tracklint reports an indexable thank-you page, a missing AJAX conversion call, and a submit control that is not a button</title>
+  <defs>
+    <style>
+      .t { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace; font-size: 14.5px; }
+      .fg { fill: #c9d1d9; } .dim { fill: #7d8590; } .red { fill: #ff7b72; }
+      .green { fill: #3fb950; } .cyan { fill: #79c0ff; } .yel { fill: #d29922; } .mag { fill: #d2a8ff; }
+    </style>
+  </defs>
+  <rect x="0" y="0" width="720" height="304" rx="10" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <rect x="1" y="1" width="718" height="36" rx="9" fill="#161b22"/>
+  <rect x="1" y="28" width="718" height="9" fill="#161b22"/>
+  <line x1="1" y1="37" x2="719" y2="37" stroke="#30363d" stroke-width="1"/>
+  <circle cx="22" cy="19" r="6" fill="#ff5f57"/>
+  <circle cx="42" cy="19" r="6" fill="#febc2e"/>
+  <circle cx="62" cy="19" r="6" fill="#28c840"/>
+  <text class="t dim" x="360" y="24" text-anchor="middle">tracklint — CI</text>
+  <text class="t" x="24" y="70"><tspan class="green" font-weight="700" xml:space="preserve">$</tspan><tspan class="fg" xml:space="preserve"> npx tracklint</tspan></text>
+  <text class="t" x="24" y="100"><tspan class="red" font-weight="700" xml:space="preserve">✗</tspan><tspan class="fg" xml:space="preserve"> contact.html </tspan><tspan class="dim" xml:space="preserve">— </tspan><tspan class="red" xml:space="preserve">2 errors</tspan><tspan class="dim" xml:space="preserve"> / </tspan><tspan class="yel" xml:space="preserve">1 warning</tspan></text>
+  <text class="t" x="24" y="124"><tspan class="red" xml:space="preserve">  ✗ </tspan><tspan class="dim" xml:space="preserve">:15 </tspan><tspan class="mag" xml:space="preserve">[submit-not-button]</tspan><tspan class="fg" xml:space="preserve"> submit control is </tspan><tspan class="cyan" xml:space="preserve">&lt;input type="submit"&gt;</tspan></text>
+  <text class="t" x="24" y="148"><tspan class="dim" xml:space="preserve">        — use </tspan><tspan class="cyan" xml:space="preserve">&lt;button type="submit"&gt;</tspan><tspan class="dim" xml:space="preserve"> so GTM/GA4 can identify the element</tspan></text>
+  <text class="t" x="24" y="172"><tspan class="red" xml:space="preserve">  ✗ </tspan><tspan class="dim" xml:space="preserve">:12 </tspan><tspan class="mag" xml:space="preserve">[thankyou-indexable]</tspan><tspan class="fg" xml:space="preserve"> "thanks.html" has no </tspan><tspan class="cyan" xml:space="preserve">noindex</tspan></text>
+  <text class="t" x="24" y="196"><tspan class="dim" xml:space="preserve">        — it can be indexed and inflate conversions</tspan></text>
+  <text class="t" x="24" y="220"><tspan class="yel" xml:space="preserve">  • </tspan><tspan class="dim" xml:space="preserve">:12 </tspan><tspan class="mag" xml:space="preserve">[ajax-no-conversion]</tspan><tspan class="fg" xml:space="preserve"> no success-time tracking call</tspan></text>
+  <text class="t" x="24" y="268"><tspan class="red" xml:space="preserve">tracklint: 2 errors</tspan><tspan class="dim" xml:space="preserve"> / 1 warning     exit 1  ← the screen still looks fine</tspan></text>
+</svg>
