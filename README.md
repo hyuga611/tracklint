@@ -1,5 +1,7 @@
 # tracklint
 
+> Part of a set of zero-dependency CI tools for AI-agent repos — start with **[reflint](https://github.com/hyuga611/reflint)**.
+
 **Did a redesign quietly stop your form from tracking conversions?**
 A conversion-tracking **integrity** linter. It reads your HTML/JSX source and **fails the PR** (exit 1 + inline annotations) when a form or CTA isn't wired for tracking. Zero-dependency, language-agnostic, runs in CI.
 
@@ -133,5 +135,20 @@ node --test                 # unit tests
 npm run poc                 # 壊れたサンプルで検出デモ → exit 1
 npm run selfcheck           # 正しいサンプルの自己検査 → exit 0
 ```
+
+## Related tools
+
+Zero-dependency CI linters for repos where AI agents do the work. Each one fails the PR on something that breaks quietly.
+
+| | Catches |
+| --- | --- |
+| [reflint](https://github.com/hyuga611/reflint) | `AGENTS.md` / `llms.txt` / `CLAUDE.md` pointing at commands, scripts, or paths that no longer exist |
+| [skills-lint](https://github.com/hyuga611/skills-lint) | `SKILL.md` broken references + `name`/trigger collisions between skills |
+| [carrylint](https://github.com/hyuga611/carrylint) | Skills with the author's machine or model baked in — absolute paths, undeclared CLIs, unresolved placeholders |
+| [genchi](https://github.com/hyuga611/genchi) | Agents reporting "done" without re-fetching real-world state |
+| **tracklint** ← you are here | Forms and CTAs that quietly stopped being wired for conversion tracking |
+| [tokenlint](https://github.com/hyuga611/tokenlint) | Hardcoded colors that bypass your design tokens |
+| [reflint for VS Code](https://github.com/hyuga611/reflint-vscode) | The same reflint checks, inline in the editor as you save |
+| [orogami](https://github.com/hyuga611/orogami) | Not a linter — natural Japanese/CJK line breaking for OGP images (BudouX + font subsetting) |
 
 MIT
