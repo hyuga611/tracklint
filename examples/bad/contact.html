@@ -3,16 +3,24 @@
   <head>
     <meta charset="utf-8" />
     <title>お問い合わせ | example.com</title>
+    <!-- 計測はしている。だから「配線されていない」ことが問題になる。 -->
+    <script>
+      (function (w, i) {
+        w[i] = w[i] || [];
+        w[i].push({ 'gtm.start': 0, event: 'gtm.js' });
+      })(window, 'dataLayer');
+    </script>
   </head>
   <body>
     <!-- 壊れた配線（意図的）: tracklint が検出すべき点をわざと含む。
-         1. 送信コントロールが input で button ではない          -> submit-not-button (error)
-         2. action 先のサンクスページに noindex が無い            -> thankyou-indexable (error)
-         3. AJAX 送信なのに成功時の計測イベントを送っていない      -> ajax-no-conversion (warn) -->
+         1. 送信コントロールが div で、JS からフォームを submit している -> submit-not-button (error)
+         2. action 先のサンクスページに noindex が無い                  -> thankyou-indexable (error)
+         3. AJAX 送信なのに成功時の計測イベントを送っていない            -> ajax-no-conversion (warn) -->
     <form id="contact-form" action="thanks.html" method="post">
       <input type="text" name="name" required />
       <input type="email" name="email" required />
-      <input type="submit" value="送信する" />
+      <textarea name="message"></textarea>
+      <div class="btn" onclick="document.getElementById('contact-form').submit()">送信する</div>
     </form>
 
     <script>

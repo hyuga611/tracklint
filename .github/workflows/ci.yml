@@ -29,7 +29,8 @@ jobs:
         run: |
           out="$(node src/check.mjs examples/bad 2>&1)" && { echo "expected non-zero exit"; echo "$out"; exit 1; } || true
           echo "$out"
-          echo "$out" | grep -q 'submit-not-button'  || { echo "missing submit-not-button"; exit 1; }
+          echo "$out" | grep -q 'submit-not-button'   || { echo "missing submit-not-button"; exit 1; }
+          echo "$out" | grep -q 'ajax-no-conversion' || { echo "missing ajax-no-conversion"; exit 1; }
           echo "$out" | grep -q 'thankyou-indexable'  || { echo "missing thankyou-indexable"; exit 1; }
 
   test:
