@@ -43,7 +43,7 @@ npx tracklint src/ pages/     # ファイル/ディレクトリ指定も可
 
 | rule | severity | 何を落とすか |
 |---|---|---|
-| `submit-not-button` | error | 送信コントロールが `<div>` / `<input type=submit>` で `<button type="submit">` でない → クリック計測が要素を特定できない |
+| `submit-not-button` | error | 送信コントロールが `<div>` / `<span>` / `<a>` で、JS でフォームを submit している → クリック計測が要素を特定できない |
 | `submit-missing-tracking` | error | 送信ボタンに一意の `id` も計測属性(`data-gtm-event` 等)も無い |
 | `submit-duplicate-id` | error | 送信ボタンの `id` が重複 → クリックの二重計上/取り違え |
 | `submit-dynamic-id` | warn | `id` がテンプレート展開 → 実行時の値・一意性を静的に検証できない |
@@ -52,6 +52,20 @@ npx tracklint src/ pages/     # ファイル/ディレクトリ指定も可
 | `thankyou-indexable` | error | サンクスページに `noindex` が無い → インデックス漏れ・CV 二重計上 |
 
 Exit code 1 when any `error` is found = a CI gate.（`warn` は既定では CI を落としません）
+
+### 鳴らさない条件 / When these rules stay silent
+
+配線系のルール（`submit-missing-tracking` / `submit-missing-gtm-event-attr` / `ajax-no-conversion`）は、
+次のどちらかに当てはまるとき**黙ります**。公開リポジトリ 1,380 本に当てた監査の結果、
+この2つが誤検知のほぼ全てだったためです（v0.4.0）。
+
+1. **計測基盤がプロジェクトのどこにも無い**とき。GTM / gtag / fbq / analytics.track 等が
+   対象ファイルのどれにも出てこなければ、そのリポジトリは計測していない＝「計測漏れ」を
+   指摘する意味がない。GTM は共通ヘッダ側に置かれることが多いので、判定は**対象ファイル全体**で行う。
+   この理由で黙ったときは CLI がその旨を出力する（黙った理由が分からないのが一番困るため）。
+2. **連絡先を集めていないフォーム**のとき。検索・絞り込み・並び替えのフォームはコンバージョンではない。
+   判定はボタンの文言ではなく入力欄で行う（「空室を検索」のような本物の CV を取りこぼさないため）。
+   `type=email` / `type=tel` / `textarea` / name・placeholder が連絡先を示す欄があれば対象。
 
 ## Config / 設定（任意）
 

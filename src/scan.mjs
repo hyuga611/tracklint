@@ -41,6 +41,10 @@ const ATTR = new RegExp(String.raw`([\w:@.-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(
 
 // HTML コメントと <script>/<style> 本文を「長さ・改行を保ったまま」空白化する。
 // これで行番号やオフセットを狂わせずに、コメント/スクリプト内のタグ的テキストを走査対象から外せる。
+// 計測基盤の存在シグナル（これが1つも無ければ、そのプロジェクトは計測していない）。
+export const MEASUREMENT =
+  /dataLayer|googletagmanager|gtag\s*\(|google-analytics|gtm\.js|analytics\.track|fbq\s*\(|matomo|piwik|clarity\.ms|hotjar|segment\.(?:com|io)|plausible|umami|mixpanel|amplitude/i;
+
 const COMMENT = /<!--[\s\S]*?-->/g;
 const RAWTEXT = /<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi;
 const blank = (m) => m.replace(/[^\n]/g, ' ');
@@ -140,6 +144,26 @@ export function resolveDest(fromFile, dest) {
 
 // ---- rules ----
 
+// 連絡先を集めるフォームか（＝コンバージョンになりうるフォームか）。
+// 検索・絞り込み・並び替えのフォームに「コンバージョンが計測できない」と言わないための門番。
+// ボタンの文言では判定しない（「空室を検索」のような本物のCVを取りこぼすため）。
+const CONTACT_FIELD = /e-?mail|mail|tel|phone|name|お名前|氏名|メール|電話|message|inquiry|contact|お問い合わせ|件名|subject/i;
+
+function looksLikeLeadForm(form) {
+  for (const c of form.controls) {
+    if (c.name === 'textarea') return true;
+    if (c.name !== 'input') continue;
+    const type = (c.attrs.get('type') || '').toLowerCase();
+    if (type === 'email' || type === 'tel') return true;
+    if (type === 'search' || type === 'hidden') continue;
+    const blob = ['name', 'id', 'placeholder', 'aria-label', 'class']
+      .map((a) => c.attrs.get(a) || '')
+      .join(' ');
+    if (CONTACT_FIELD.test(blob)) return true;
+  }
+  return false;
+}
+
 function submitControl(form) {
   // 優先: 正しい <button type=submit> → だめな送信要素（input submit/image, JSで submit するボタン/div 等）
   let proper = null;
@@ -157,7 +181,9 @@ function submitControl(form) {
     } else if (c.name === 'input') {
       const type = (c.attrs.get('type') || '').toLowerCase();
       if (type === 'submit' || type === 'image') {
-        if (!improper) improper = c;
+        // <input type="submit"> は正当な送信コントロール。GTM のフォーム送信トリガーでも
+        // id/class のクリックトリガーでも捕捉できるので、これ自体は計測の欠陥ではない。
+        if (!proper) proper = c;
       } else if (jsSubmits && !improper) {
         improper = c;
       }
@@ -261,7 +287,7 @@ export function scan(html, opts = {}) {
       forms.push(f);
     } else if (t.name === 'form' && t.isClose) {
       stack.pop();
-    } else if (stack.length && !t.isClose && ['button', 'input', 'div', 'span', 'a'].includes(t.name)) {
+    } else if (stack.length && !t.isClose && ['button', 'input', 'textarea', 'div', 'span', 'a'].includes(t.name)) {
       stack[stack.length - 1].controls.push(t);
     }
   }
@@ -274,6 +300,10 @@ export function scan(html, opts = {}) {
     /\bfetch\s*\(|XMLHttpRequest|\baxios\b|\$\.ajax|\.ajax\s*\(/.test(code) ||
     (/preventDefault\s*\(/.test(code) && hasSubmitHandler);
   const hasConversion = conversionCalls.some((c) => code.includes(c));
+  // 「このプロジェクトはそもそも計測しているか」。計測基盤が1つも無いリポジトリに
+  // 「コンバージョンが計測できない」と言っても意味がないので、配線系のルールを黙らせる。
+  // CLI は全対象ファイルを見て判定した結果を opts.measures で渡す（単ファイル判断より正確）。
+  const measures = opts.measures ?? (hasConversion || MEASUREMENT.test(code));
 
   let sawWpForm = false;
   for (const form of forms) {
@@ -294,14 +324,17 @@ export function scan(html, opts = {}) {
       const hasTrackAttr = trackingAttributes.some((a) => proper.attrs.has(a) && proper.attrs.get(a) !== '');
       const onclick = proper.attrs.get('onclick') || '';
       const inlineConv = conversionCalls.some((c) => onclick.includes(c));
+      const isLead = looksLikeLeadForm(form);
       if (!hasId && !hasTrackAttr && !inlineConv) {
-        push('submit-missing-tracking', proper.line, 'submit button has no unique id, no tracking attribute (data-gtm-event etc.), and no inline tracking call — the click cannot be measured');
+        if (measures && isLead) {
+          push('submit-missing-tracking', proper.line, 'submit button has no unique id, no tracking attribute (data-gtm-event etc.), and no inline tracking call — the click cannot be measured');
+        }
       } else if (hasId && isDynamic(id)) {
         push('submit-dynamic-id', proper.line, `submit button id is template-expanded ("${id}") — its runtime value and uniqueness cannot be verified statically`);
       } else if (hasId && isDupId(id)) {
         push('submit-duplicate-id', proper.line, `submit button id "${id}" is used more than once — clicks will be double-counted or attributed to the wrong form`);
       }
-      if (hasId && !hasTrackAttr) {
+      if (measures && isLead && hasId && !hasTrackAttr) {
         push('submit-missing-gtm-event-attr', proper.line, 'has an id but no data-gtm-event — the conversion name lives only inside the GTM container');
       }
     }
@@ -353,7 +386,7 @@ export function scan(html, opts = {}) {
 
   // R3: AJAX 送信なのに成功時の計測イベントが無い（ファイル単位・1回だけ）
   //   WP フォーム検出時は、より具体的な wp-form-* ルールに委ねて二重警告を避ける
-  if (forms.length && hasAjax && !hasConversion && !(wordpressActive && sawWpForm)) {
+  if (measures && forms.length && hasAjax && !hasConversion && !(wordpressActive && sawWpForm)) {
     push('ajax-no-conversion', forms[0].line, `looks like an AJAX submit, but no success-time tracking call (${conversionCalls.join(' / ')}) appears in this file — nothing fires because the page never navigates`);
   }
 

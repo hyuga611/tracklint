@@ -10,7 +10,7 @@
 import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { resolve, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { scan, collectIds, DEFAULT_CONFIG } from './scan.mjs';
+import { scan, collectIds, DEFAULT_CONFIG, MEASUREMENT } from './scan.mjs';
 
 const EXT = /\.(html?|php|jsx|tsx|vue|svelte)$/i;
 const IGNORE_DIRS = new Set(['node_modules', 'dist', 'build', 'vendor', '.git', '.svn', 'coverage']);
@@ -120,6 +120,10 @@ export function main(argv) {
   for (const t of texts.values()) for (const id of collectIds(t)) idCount.set(id, (idCount.get(id) || 0) + 1);
   const isDupId = (id) => (idCount.get(id) || 0) > 1;
 
+  // 計測基盤がプロジェクトのどこかに存在するか。GTM は共通ヘッダ側に置かれることが多いので、
+  // ファイル単位ではなく対象ファイル全体で判定する。1つも無ければ配線系ルールは黙る。
+  const measures = [...texts.values()].some((t) => MEASUREMENT.test(t));
+
   const exists = (p) => existsSync(resolve(root, p));
   const readText = (p) => {
     try {
@@ -132,7 +136,7 @@ export function main(argv) {
   let errors = 0;
   let warns = 0;
   for (const f of targets) {
-    const findings = scan(texts.get(f), { filename: f, exists, readText, isDupId, config });
+    const findings = scan(texts.get(f), { filename: f, exists, readText, isDupId, config, measures });
     if (findings.length === 0) {
       console.log(`✓ ${f} — tracking wired`);
       continue;
@@ -149,6 +153,14 @@ export function main(argv) {
         console.log(`::${lvl} file=${f},line=${x.ln}::[${x.rule}] ${x.msg.replace(/\r?\n/g, ' ')}`);
       }
     }
+  }
+
+  // 黙った理由は必ず言う（何も出ないのが「合格」なのか「対象外」なのか分からないのが一番困る）
+  if (!measures) {
+    console.log(
+      `\ntracklint: no analytics found in ${targets.length} file${targets.length === 1 ? '' : 's'} ` +
+        `(GTM / gtag / fbq / analytics.track …) — conversion-wiring rules were skipped.`
+    );
   }
 
   if (errors > 0) {
