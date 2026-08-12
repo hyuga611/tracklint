@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: <you>/tracklint@v1     # auto-detects files containing <form>
+      - uses: hyuga611/tracklint@v0  # auto-detects files containing <form>
 ```
 
 Findings show up as inline PR annotations, and the job fails (exit 1) so broken tracking can't be merged.
