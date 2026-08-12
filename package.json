@@ -16,7 +16,8 @@
   "scripts": {
     "poc": "node src/check.mjs examples/bad",
     "selfcheck": "node src/check.mjs examples/good",
-    "test": "node --test"
+    "test": "node --test",
+    "lint": "npx --yes @biomejs/biome@2.5.8 lint src test"
   },
   "keywords": [
     "conversion-tracking",
