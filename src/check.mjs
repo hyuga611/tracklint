@@ -7,7 +7,7 @@
 //
 //   node src/check.mjs [file|dir ...]   # 省略時は <form> を含むファイルを自動検出
 
-import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, readdirSync, realpathSync } from 'node:fs';
 import { resolve, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { scan, collectIds, DEFAULT_CONFIG, MEASUREMENT } from './scan.mjs';
@@ -172,6 +172,22 @@ export function main(argv) {
 }
 
 // 直接実行された時だけ CLI として動く（import 時は関数だけ公開）
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+//
+// argv[1] は「どう呼ばれたか」のパス。`npm i -g` も `npx` もそこにシンボリックリンクを置くので、
+// 解決済みの実パスである import.meta.url とは一致せず、install した版の CLI は何もせずに
+// exit 0 で終わっていた。リンタにとってこれは最悪の壊れ方で、「問題を見つけなかった」と
+// 「一度も動いていない」が区別できない。比較する前にリンクを解決する。
+function runDirectly() {
+  const arg = process.argv[1];
+  if (!arg) return false;
+  if (import.meta.url === pathToFileURL(arg).href) return true;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(arg)).href;
+  } catch {
+    return false;
+  }
+}
+
+if (runDirectly()) {
   process.exit(main(process.argv.slice(2)));
 }
