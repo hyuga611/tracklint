@@ -30,7 +30,9 @@ jobs:
       - uses: hyuga611/tracklint@v0  # auto-detects files containing <form>
 ```
 
-Findings show up as inline PR annotations, and the job fails (exit 1) so broken tracking can't be merged.
+Findings show up as inline PR annotations, and the job fails (exit 1).
+
+A failing job does not by itself stop a merge — GitHub only blocks one when the check is **required**, under Settings → Rules (or branch protection). Until you do that, this is a red X somebody can click past. Marking it required is the step that turns it into a gate.
 
 ## Use as a CLI / ローカルで使う
 

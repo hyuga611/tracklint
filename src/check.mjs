@@ -10,6 +10,16 @@
 import { readFileSync, existsSync, statSync, readdirSync, realpathSync } from 'node:fs';
 import { resolve, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+// Read rather than hardcoded: a version constant is one more place a release has to
+// remember, and the one that nobody notices going stale.
+const VERSION = (() => {
+  try {
+    return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
+  } catch {
+    return 'unknown';
+  }
+})();
 import { scan, collectIds, DEFAULT_CONFIG, MEASUREMENT } from './scan.mjs';
 
 const EXT = /\.(html?|php|jsx|tsx|vue|svelte)$/i;
@@ -84,10 +94,38 @@ export function collectTargets(root, args) {
   return [...new Set(out)];
 }
 
+const HELP = `tracklint ${VERSION} — are your forms and CTAs still wired for tracking?
+
+  tracklint [path ...]      default: every file containing a <form>
+
+  --preset=a,b              stack analytics presets (see tracklint.config.json)
+  -h, --help  ·  -v, --version
+
+  exit 0 nothing to fix (or nothing to check) / 1 findings / 2 could not run
+`;
+
 export function main(argv) {
+  if (argv.includes('--help') || argv.includes('-h')) {
+    process.stdout.write(HELP);
+    return 0;
+  }
+  if (argv.includes('--version') || argv.includes('-v')) {
+    process.stdout.write(VERSION + '\n');
+    return 0;
+  }
   const inActions = process.env.GITHUB_ACTIONS === 'true';
   const root = process.cwd();
   const args = argv.filter((a) => a !== '--' && !a.startsWith('-'));
+  // Flags were filtered out and then never looked at again, so `--presets=ga4`
+  // — one letter off — was accepted in silence and simply did nothing. A config
+  // that is quietly ignored is worse than one that is rejected: the run stays
+  // green and the preset it was meant to apply never applies.
+  const unknown = argv.filter((a) => a !== '--' && a.startsWith('-') && !a.startsWith('--preset='));
+  if (unknown.length) {
+    console.error(`tracklint: unknown option ${unknown.join(', ')}`);
+    console.error('tracklint: run with --help to see what it takes');
+    return 2;
+  }
   const config = loadConfig(root, parsePresets(argv));
 
   // 明示指定されたパスが存在しない場合は「素通りで exit 0」にせず error にする
