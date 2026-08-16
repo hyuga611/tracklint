@@ -391,3 +391,42 @@ for (const [label, control] of realWorld) {
     assert.ok(rules(scan(html, ok)).includes('submit-missing-tracking'), control);
   });
 }
+
+// --- 見逃しの監査（2026-08） ---
+// 別のモデルに「このスキャナを黙らせるマークアップ」を作らせ、実際に通したもの。
+// 12件のうち本物は3件で、残りは設計どおり（フレームワークの中身は静的に見えない）か
+// 指摘そのものが誤りだった。重かったのは「見えなかった」を「問題なし」と報告する形。
+
+test('送信コントロールが1つも見つからないフォームは、黙って通さない', () => {
+  // <SubmitButton> が何を描画するかは静的には分からない。分からないことを
+  // 「tracking wired」と報告するのが一番まずい。warn で言う。
+  const html =
+    '<script>dataLayer.push({})</script>' +
+    '<form data-thankyou="t.html"><input type="email" name="email"><SubmitButton>送信</SubmitButton></form>';
+  assert.ok(rules(scan(html, ok)).includes('submit-control-not-found'));
+});
+
+test('送信コントロールが見えているフォームでは、その warn を出さない', () => {
+  const html =
+    '<script>dataLayer.push({})</script>' +
+    '<form data-thankyou="t.html"><input type="email" name="email"><button type="submit" id="go" data-gtm-event="lead">送信</button></form>';
+  assert.deepEqual(rules(scan(html, ok)), []);
+});
+
+test('JSX の定数式で書かれた type も送信コントロールとして読む', () => {
+  for (const t of ['{"submit"}', "{'submit'}", '{`submit`}']) {
+    const html =
+      '<script>dataLayer.push({})</script>' +
+      `<form data-thankyou="t.html"><input type="email" name="email"/><button type=${t}>送信</button></form>`;
+    const r = rules(scan(html, ok));
+    assert.ok(r.includes('submit-missing-tracking'), `type=${t} が送信ボタンとして読めていない`);
+    assert.ok(!r.includes('submit-control-not-found'), `type=${t} で「見つからない」になっている`);
+  }
+});
+
+test('補間を含む式は定数として読まない（実行時の値は分からないままにする）', () => {
+  const html =
+    '<script>dataLayer.push({})</script>' +
+    '<form data-thankyou="t.html"><input type="email" name="email"/><button type="submit" id={`btn-${i}`}>送信</button></form>';
+  assert.ok(rules(scan(html, ok)).includes('submit-dynamic-id'));
+});

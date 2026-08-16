@@ -13,7 +13,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -85,6 +85,29 @@ test('a bare run with no arguments is unaffected', () => {
     const r = run([], dir);
     assert.equal(r.code, 0, 'nothing to check is not a failure');
     assert.doesNotMatch(r.err, /unknown option/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// 自動検出は `text.includes('<form')` で大小を区別していた。`<FORM>` は古いテンプレートに
+// 実在し、混在したディレクトリでは「1 file を見た、0 errors」と出て、見ていない方の
+// 存在ごと消えていた。検査していないことを検査に通ったと報告する形。
+test('auto-discovery finds a form written in uppercase', () => {
+  const dir = empty();
+  try {
+    writeFileSync(
+      join(dir, 'upper.html'),
+      '<script>dataLayer.push({})</script>\n<FORM data-thankyou="t.html"><INPUT TYPE="email" NAME="email"><BUTTON TYPE="submit">送信</BUTTON></FORM>',
+    );
+    let out = '';
+    try {
+      out = execFileSync(process.execPath, [CLI, dir], { encoding: 'utf8' });
+    } catch (e) {
+      out = (e.stdout || '') + (e.stderr || '');
+    }
+    assert.doesNotMatch(out, /no file containing a <form> was found/);
+    assert.match(out, /submit-missing-tracking/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -17,6 +17,7 @@ export const DEFAULT_CONFIG = {
     'submit-not-button': 'error',
     'submit-missing-tracking': 'error',
     'submit-dynamic-id': 'warn',
+    'submit-control-not-found': 'warn', // 見えないだけで壊れているとは限らない。黙るよりは言う
     'submit-duplicate-id': 'error',
     'submit-missing-gtm-event-attr': 'off', // ノイズ抑制のため既定 off
     'ajax-no-conversion': 'warn', // 誤検知が出やすいので既定 warn
@@ -56,7 +57,14 @@ function parseAttrs(str) {
   while ((m = ATTR.exec(str)) !== null) {
     if (!m[1]) continue;
     const name = m[1].toLowerCase();
-    const val = m[2] ?? m[3] ?? m[4] ?? m[5] ?? '';
+    let val = m[2] ?? m[3] ?? m[4] ?? m[5] ?? '';
+    // JSX の定数式は、書かれている値として読む: type={"submit"} / {'submit'} / {`submit`}。
+    // 波括弧つきのまま持つと "submit" と一致せず、送信コントロールとして数えられない
+    // ——フォームに送信ボタンが1つも無いことになり、何も指摘せずに通っていた。
+    // 補間や変数を含む式はそのまま残す（実行時の値は静的には分からないので、
+    // isDynamic 側で「動的な id」として扱われるのが正しい）。
+    const constExpr = /^\{\s*(?:"([^"]*)"|'([^']*)'|`([^`$\\{}]*)`)\s*\}$/.exec(val);
+    if (constExpr) val = constExpr[1] ?? constExpr[2] ?? constExpr[3] ?? val;
     if (!attrs.has(name)) attrs.set(name, val);
   }
   return attrs;
@@ -337,6 +345,22 @@ export function scan(html, opts = {}) {
       if (measures && isLead && hasId && !hasTrackAttr) {
         push('submit-missing-gtm-event-attr', proper.line, 'has an id but no data-gtm-event — the conversion name lives only inside the GTM container');
       }
+    } else if (!wp && !improper && !proper && measures && looksLikeLeadForm(form)) {
+      // 送信コントロールが1つも見つからないフォーム。<SubmitButton> のような
+      // フレームワークのコンポーネントやカスタム要素が何を描画するかは静的には
+      // 分からないので、ここは構造的に見えない側に入る。
+      //
+      // ただし黙ると "0 errors — tracking wired" と出る。見なかったことと、
+      // 見て問題が無かったことは別物で、後者として報告するのが一番まずい壊れ方
+      // ——このリポジトリ群で繰り返し潰してきたのと同じ形。既定は warn:
+      // Enter キーだけで送るフォームは実在し、error にすると CI が止まる。
+      push(
+        'submit-control-not-found',
+        form.line,
+        'this form has no submit control this linter can see — a framework component or custom element ' +
+          'renders it, so whether the click is measurable cannot be checked here. Verify it by hand, or ' +
+          'give the rendered control an id/data-gtm-event',
+      );
     }
 
     // R4: サンクスページ（WP フォームの action は admin-ajax 等で静的サンクスではない → action 由来では推定しない）

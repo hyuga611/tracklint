@@ -68,7 +68,10 @@ function walk(root, dir, out) {
       } catch {
         continue;
       }
-      if (text.includes('<form')) out.push(relative(root, full).replace(/\\/g, '/'));
+      // 大小を問わない。`<FORM>` は古いテンプレートに実在し、`includes('<form')` だと
+      // そのファイルだけ自動検出から静かに落ちる——混在したディレクトリでは
+      // 「1 file を見た、0 errors」と出て、見ていない方の存在が消える。
+      if (/<form/i.test(text)) out.push(relative(root, full).replace(/\\/g, '/'));
     }
   }
 }
