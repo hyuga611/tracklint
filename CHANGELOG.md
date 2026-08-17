@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.6.1
+
+### 締めの一行が、直前に出した警告を打ち消していた
+
+0.6.0 で `submit-control-not-found` を足したのは、送信コントロールが1つも見つからない
+フォームを**黙って**通していたからだった。警告は出るようになった。**しかし最後の要約は
+errors が 0 でありさえすれば `— tracking wired` と言い続けていた。**
+
+```
+tracklint: 0 errors / 1 warning — tracking wired
+  anchor.html:12  [submit-control-not-found] this form has no submit control this
+                  linter can see — … whether the click is measurable cannot be checked here
+```
+
+指摘は「確認できない」と言い、その3行下で要約が「配線されている」と言う。読む側に残るのは
+最後の一行のほうで、**0.6.0 で直したはずの「見なかったことを問題なしとして報告する」形が、
+一段上のレイヤーにそのまま残っていた。** `scan.mjs` には「黙ると "0 errors — tracking wired"
+と出る」と、この文字列を名指しするコメントまで書いてあった。
+
+警告が1件でもあるときは `— not everything could be checked` で締めるようにした。
+終了コードは 0 のままにしてある（Enter キーだけで送るフォームは実在するので、
+警告で CI を止めるのは誤検知の側に倒れる）。
+
+`test/cli.test.mjs` に回帰テストを追加した。警告が1件出ていること自体も確認しているので、
+検出が壊れた場合もこのテストは落ちる。この修正を戻すと落ちることは確認済み。
+
 ## 0.6.0
 
 別のモデル（GPT-5.4）にスキャナ本体だけを渡し、「これを黙らせるマークアップを作れ」と

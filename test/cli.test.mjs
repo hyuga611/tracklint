@@ -118,3 +118,25 @@ test('auto-discovery finds a form written in uppercase', () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// 0.6.0 で submit-control-not-found を足して「黙る」のはやめたのに、締めの一行は
+// errors が 0 でありさえすれば "tracking wired" と言い続けていた。警告が
+// 「この送信コントロールは確認できない」と言っている同じ出力の最後で、要約が
+// 「配線されている」と打ち消す状態で、直そうとした形そのものが残っていた。
+// 1 warning が出ていること自体も見ているので、警告が出なくなればこのテストは落ちる。
+test('a form whose submit control cannot be seen is not summarised as "tracking wired"', () => {
+  const dir = empty();
+  try {
+    writeFileSync(
+      join(dir, 'anchor.html'),
+      '<script>window.dataLayer = window.dataLayer || [];</script>\n' +
+        '<form><input type="email" name="email"><a href="#" role="button">送信</a></form>',
+    );
+    const r = run(['anchor.html'], dir);
+    assert.equal(r.code, 0, 'a warning must not fail the build');
+    assert.match(r.out, /0 errors \/ 1 warning/, 'the unseen submit control must still be reported');
+    assert.doesNotMatch(r.out, /tracking wired/, 'what was not checked must not be summarised as wired');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

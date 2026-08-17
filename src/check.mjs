@@ -208,7 +208,16 @@ export function main(argv) {
     console.error(`\ntracklint: ${errors} error${errors === 1 ? '' : 's'}${warns ? ` / ${warns} warning${warns === 1 ? '' : 's'}` : ''}`);
     return 1;
   }
-  console.log(`\ntracklint: 0 errors${warns ? ` / ${warns} warning${warns === 1 ? '' : 's'}` : ''} — tracking wired`);
+  // 警告が1件でも出ているなら "tracking wired" では締めない。
+  // submit-control-not-found のような警告は「見えなかった」と言っている指摘なので、
+  // 同じ出力の最後で「配線されている」と要約すると、直前の指摘を要約が打ち消す。
+  // 0.6.0 で黙るのをやめたのに、締めの一行が「見なかったこと」を「問題なし」として
+  // 報告し続けていた。scan.mjs の submit-control-not-found と対になる修正。
+  if (warns > 0) {
+    console.log(`\ntracklint: 0 errors / ${warns} warning${warns === 1 ? '' : 's'} — not everything could be checked`);
+    return 0;
+  }
+  console.log('\ntracklint: 0 errors — tracking wired');
   return 0;
 }
 
