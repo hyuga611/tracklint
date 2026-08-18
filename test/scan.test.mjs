@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { scan, tokenize, hasNoindex, resolveDest, collectIds } from '../src/scan.mjs';
+import { scan, tokenize, hasNoindex, resolveDest, collectIds, stripComments } from '../src/scan.mjs';
 
 // 既定の前提＝「計測しているサイト」。CLI は対象ファイル全体を見て measures を決めるので、
 // 単体テストでは明示的に true を渡す（計測が無いプロジェクトの挙動は専用のテストで見る）。
@@ -429,4 +429,40 @@ test('補間を含む式は定数として読まない（実行時の値は分�
     '<script>dataLayer.push({})</script>' +
     '<form data-thankyou="t.html"><input type="email" name="email"/><button type="submit" id={`btn-${i}`}>送信</button></form>';
   assert.ok(rules(scan(html, ok)).includes('submit-dynamic-id'));
+});
+
+// コメントは書いてあるだけで、実行されない。
+//
+// 計測基盤の有無もコンバージョン呼び出しの有無も生テキストで見ていたので、
+// 「うちは gtag を使っていない」と注記した人だけが配線ルールを全部有効化されて
+// 怒られ、逆に「ここで gtag を呼ぶな」というコメントは本物の呼び出しとして数えられて
+// 本当に未配線のフォームが黙っていた。どちらも言及を実行として読んだ結果。
+test('HTML コメントの中の gtag は計測基盤ではない', () => {
+  const html = '<!-- This site intentionally does not call gtag() or load Google Analytics. -->';
+  assert.equal(/gtag\s*\(/.test(stripComments(html)), false);
+});
+
+test('JS コメントの中の gtag はコンバージョン呼び出しではない', () => {
+  const html = '<script>\n// gtag must never be called here; not implemented yet.\n</script>';
+  assert.equal(stripComments(html).includes('gtag'), false);
+});
+
+test('本物の呼び出しは残る（消しすぎると配線ルールが黙る方向に壊れる）', () => {
+  const html = '<script>\ngtag("event", "generate_lead");\n</script>';
+  assert.equal(stripComments(html).includes('gtag'), true);
+});
+
+test('protocol-relative な //cdn URL をコメントとして食わない', () => {
+  const html = '<script src="//www.googletagmanager.com/gtm.js"></script>';
+  assert.equal(stripComments(html).includes('googletagmanager'), true);
+});
+
+test('https:// の // もコメントではない', () => {
+  const html = '<script>\nconst u = "https://www.googletagmanager.com/gtm.js";\n</script>';
+  assert.equal(stripComments(html).includes('googletagmanager'), true);
+});
+
+test('コメントを空白化しても行番号がずれない', () => {
+  const html = '<!--\na\nb\n-->\n<form></form>';
+  assert.equal(stripComments(html).split('\n').length, html.split('\n').length);
 });

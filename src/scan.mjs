@@ -50,6 +50,26 @@ const COMMENT = /<!--[\s\S]*?-->/g;
 const RAWTEXT = /<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi;
 const blank = (m) => m.replace(/[^\n]/g, ' ');
 
+// コメントは「書いてあるだけ」で、実行されない。
+//
+// 計測基盤の有無も、コンバージョン呼び出しの有無も、生テキストへの正規表現で見ていたので、
+// 「このサイトは gtag を使っていない」と注記した人だけが配線ルールを全部有効化されて
+// 怒られていた。逆に「ここで gtag を呼ぶな」というコメントは本物の呼び出しとして数えられ、
+// 本当に未配線のフォームが黙っていた。どちらも言及を実行として読んだ結果。
+//
+// HTML コメントと、<script> 本文の JS コメントを、長さと改行を保ったまま空白化する。
+// 文字列中の // （https:// や src="//cdn..."）はコメントではないので残す——
+// ここで消しすぎると計測基盤を見落として、配線ルールが黙る方向に壊れる。
+export function stripComments(html) {
+  const out = String(html).replace(COMMENT, blank);
+  return out.replace(/(<script\b[^>]*>)([\s\S]*?)(<\/script>)/gi, (_m, open, body, close) => {
+    const cleaned = body
+      .replace(/\/\*[\s\S]*?\*\//g, blank)
+      .replace(/(^|[^:'"])\/\/[^\n]*/g, (mm, p1) => p1 + blank(mm.slice(p1.length)));
+    return open + cleaned + close;
+  });
+}
+
 function parseAttrs(str) {
   const attrs = new Map();
   let m;
@@ -302,7 +322,7 @@ export function scan(html, opts = {}) {
 
   // ファイル単位の signal（R3 用）。コメントは除外し、AJAX の判定は
   // 「実際の submit ハンドラの証拠」に限定する（type="submit" 属性の "submit" に反応しない）。
-  const code = html.replace(COMMENT, ' ');
+  const code = stripComments(html);
   const hasSubmitHandler = /addEventListener\s*\(\s*['"]submit['"]|onsubmit\s*=|\.(?:request)?submit\s*\(/i.test(code);
   const hasAjax =
     /\bfetch\s*\(|XMLHttpRequest|\baxios\b|\$\.ajax|\.ajax\s*\(/.test(code) ||

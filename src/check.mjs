@@ -20,7 +20,7 @@ const VERSION = (() => {
     return 'unknown';
   }
 })();
-import { scan, collectIds, DEFAULT_CONFIG, MEASUREMENT } from './scan.mjs';
+import { scan, collectIds, DEFAULT_CONFIG, MEASUREMENT, stripComments } from './scan.mjs';
 
 const EXT = /\.(html?|php|jsx|tsx|vue|svelte)$/i;
 const IGNORE_DIRS = new Set(['node_modules', 'dist', 'build', 'vendor', '.git', '.svn', 'coverage']);
@@ -163,7 +163,9 @@ export function main(argv) {
 
   // 計測基盤がプロジェクトのどこかに存在するか。GTM は共通ヘッダ側に置かれることが多いので、
   // ファイル単位ではなく対象ファイル全体で判定する。1つも無ければ配線系ルールは黙る。
-  const measures = [...texts.values()].some((t) => MEASUREMENT.test(t));
+  // コメントは実行されない。「gtag は使っていない」という注記を計測基盤の存在と読むと、
+  // 明記した人だけが配線ルールを全部有効化されて怒られる。
+  const measures = [...texts.values()].some((t) => MEASUREMENT.test(stripComments(t)));
 
   const exists = (p) => existsSync(resolve(root, p));
   const readText = (p) => {
